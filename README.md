@@ -17,42 +17,37 @@ A Bash shell script which uses nftables sets to ban a large number of IP address
 - 10/24/2015: Outsourced the entire configuration in it's own configuration file. Makes updating the shell script way easier!
 - 10/22/2015: Changed the documentation, the script should be put in /usr/local/sbin not /usr/local/bin
 
-## Quick start for Debian/Ubuntu based installations
-
-1. `wget -O /usr/local/sbin/nft-blacklist.sh https://raw.githubusercontent.com/leshniak/nft-blacklist/master/nft-blacklist.sh`
-2. `chmod +x /usr/local/sbin/nft-blacklist.sh`
-3. `mkdir -p /etc/nft-blacklist && mkdir -p /var/cache/nft-blacklist ; wget -O /etc/nft-blacklist/nft-blacklist.conf https://raw.githubusercontent.com/leshniak/nft-blacklist/master/nft-blacklist.conf`
-4. Modify `nft-blacklist.conf` according to your needs. Per default, the blacklisted IP addresses will be saved to `/var/cache/nft-blacklist/blacklist.nft`
-5. `apt-get install nftables`
-6. Download `cidr-merger` from https://github.com/zhanhb/cidr-merger/releases
-7. Create the nftables blacklist (see below). After proper testing, make sure to persist it in your firewall script or similar or the rules will be lost after the next reboot.
-8. Auto-update the blacklist using a cron job
+## Quick start for VyOS 1.4 installations
+0. Create the vyos network group `set firewall group network-group blackhole` This will create the set N_blackhole inside vyos_filter table (see https://forum.vyos.io/t/how-to-load-networks-from-a-file-to-add-them-into-the-firewall-group-in-vyos-1-4-with-ntf-command-to-replace-removed-ipset/13997/2)
+1. `wget -O /config/scripts/nft-blacklist.sh https://raw.githubusercontent.com/qubex22/nft-blacklist/master/nft-blacklist.sh`
+2. `chmod +x /config/scripts/nft-blacklist.sh`
+3. `mkdir -p /config/user-data/nft-blacklist && mkdir -p /config/user-data/cache/nft-blacklist ; wget -O /config/user-data/nft-blacklist/nft-blacklist.conf https://raw.githubusercontent.com/qubex22/nft-blacklist/master/nft-blacklist.conf`
+4. Modify `nft-blacklist.conf` according to your needs. Per default, the blacklisted IP addresses will be saved to `/config/user-data/nft-blacklist/blacklist.nft`
+5. Download `cidr-merger` from https://github.com/zhanhb/cidr-merger/releases
+6. Create the nftables blacklist (see below). After proper testing, make sure to persist it in your firewall script or similar or the rules will be lost after the next reboot.
+7. Auto-update the blacklist using a cron job
 
 ## First run, create the list
 
-to generate the `/etc/nft-blacklist/ip-blacklist.restore`:
+to generate the `/config/user-data/ip-blacklist.restore`:
 
 ```sh
-/usr/local/sbin/nft-blacklist.sh /etc/nft-blacklist/nft-blacklist.conf
+/config/scripts/nft-blacklist.sh /config/user-data/nft-blacklist/nft-blacklist.conf
 ```
 
 ## nftables filter rule
 
 ```sh
 # Enable blacklists
-nft -f /var/cache/nft-blacklist/blacklist.nft
+nft -f /config/user-data/nft-blacklist/blacklist.nft
 ```
 
-Make sure to run this snippet in a firewall script or just insert it to `/etc/rc.local`.
 
 ## Cron job
 
-In order to auto-update the blacklist, copy the following code into `/etc/cron.d/nft-blacklist-update`. Don't update the list too often or some blacklist providers will ban your IP address. Once a day should be OK though.
-
-```sh
-PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
-MAILTO=root
-33 23 * * *      root /usr/local/sbin/nft-blacklist.sh /var/cache/nft-blacklist/nft-blacklist.conf
+```
+set system task-scheduler task Update-Blacklists executable path '/config/scripts/nft-blacklist.sh'
+set system task-scheduler task Update-Blacklists interval '500m'
 ```
 
 ## Check for dropped packets
@@ -60,7 +55,7 @@ MAILTO=root
 Using nftables, you can check how many packets got dropped using the blacklist:
 
 ```sh
-leshniak@raspberrypi ~> sudo nft list counter inet blackhole blacklist_v4
+leshniak@raspberrypi ~> sudo nft list counter ip blackhole blacklist_v4
 table inet blackhole {
         counter blacklist_v4 {
                 packets 52 bytes 2303
