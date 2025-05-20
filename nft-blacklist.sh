@@ -10,8 +10,6 @@
 # * or `aggregate-prefixes` (Python)
 DEFAULT_CIDR_MERGER=cidr-merger
 NFT=nft  # can be "sudo /sbin/nft" or whatever to apply the ruleset
-DEFAULT_HOOK=input # use "prerouting" if you need to drop packets before other prerouting rule chains
-DEFAULT_CHAIN=input
 SET_NAME_PREFIX=blacklist
 SET_NAME_V4="${SET_NAME_PREFIX}_v4"
 SET_NAME_V6="${SET_NAME_PREFIX}_v6"
@@ -57,8 +55,6 @@ fi
 [[ ${DO_OPTIMIZE_CIDR:-yes} =~ ^1|on|true|yes$ ]] && let OPTIMIZE_CIDR=1 || let OPTIMIZE_CIDR=0
 [[ ${KEEP_TMP_FILES:-no} =~ ^1|on|true|yes$ ]] && let KEEP_TMP_FILES=1 || let KEEP_TMP_FILES=0
 CIDR_MERGER="${CIDR_MERGER:-DEFAULT_CIDR_MERGER}"
-HOOK="${HOOK:-$DEFAULT_HOOK}"
-CHAIN="${CHAIN:-$DEFAULT_CHAIN}"
 
 if exists $CIDR_MERGER && (( $OPTIMIZE_CIDR )); then
   let OPTIMIZE_CIDR=1
@@ -118,47 +114,34 @@ fi
 
 cat >| "$RULESET_FILE" <<EOF
 #
-# Created by nft-blacklist (https://github.com/leshniak/nft-blacklist) at $(date -uIseconds)
-# Blacklisted entries: $(count_entries "$IP_BLACKLIST_FILE") IPv4, $(count_entries "$IP6_BLACKLIST_FILE") IPv6
+# Created by nft-blacklist (modified) at $(date -uIseconds)
+# Loading IP blacklist into existing table 'vyos_filter' and set 'N_blackhole'
 #
-# Sources used:
-$(printf "#   - %s\n" "${BLACKLISTS[@]}")
-#
-add table inet $TABLE
-add counter inet $TABLE $SET_NAME_V4
-add counter inet $TABLE $SET_NAME_V6
-add set inet $TABLE $SET_NAME_V4 { type ipv4_addr; flags interval; auto-merge; }
-flush set inet $TABLE $SET_NAME_V4
-add set inet $TABLE $SET_NAME_V6 { type ipv6_addr; flags interval; auto-merge; }
-flush set inet $TABLE $SET_NAME_V6
-add chain inet $TABLE $CHAIN { type filter hook $HOOK priority filter - 1; policy accept; }
-flush chain inet $TABLE $CHAIN
-add rule inet $TABLE $CHAIN iif "lo" accept
-add rule inet $TABLE $CHAIN meta pkttype { broadcast, multicast } accept\
-$([[ ! -z "$IP_WHITELIST" ]] && echo -e "\\nadd rule inet $TABLE $CHAIN ip saddr { $IP_WHITELIST } accept")\
-$([[ ! -z "$IP6_WHITELIST" ]] && echo -e "\\nadd rule inet $TABLE $CHAIN ip6 saddr { $IP6_WHITELIST } accept")
-add rule inet $TABLE $CHAIN ip saddr @$SET_NAME_V4 counter name $SET_NAME_V4 drop
-add rule inet $TABLE $CHAIN ip6 saddr @$SET_NAME_V6 counter name $SET_NAME_V6 drop
+
+flush set ip vyos_filter N_blackhole
+
 EOF
 
+ip_lines=""
+
+# add IPv4 addresses
 if [[ -s "$IP_BLACKLIST_FILE" ]]; then
-  cat >> "$RULESET_FILE" <<EOF
-add element inet $TABLE $SET_NAME_V4 {
-$(sed -rn -e '/^[#$;]/d' -e "s/^([0-9./]+).*/  \\1,/p" "$IP_BLACKLIST_FILE")
-}
-EOF
+    ip_lines=$(sed -rn '/^([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+(\/[0-9]+)?)/{ s//  \1,/p }' "$IP_BLACKLIST_FILE")
+    #echo "DEBUG: ip_lines extracted:" >&2
+    #echo "$ip_lines" >&2
 fi
 
-if [[ -s "$IP6_BLACKLIST_FILE" ]]; then
-  cat >> "$RULESET_FILE" <<EOF
-add element inet $TABLE $SET_NAME_V6 {
-$(sed -rn -e '/^[#$;]/d' -e "s/^(([0-9a-f:.]+:+[0-9a-f]*)+(\/[0-9]{1,3})?).*/  \\1,/Ip" "$IP6_BLACKLIST_FILE")
-}
-EOF
+if [[ -n "$ip_lines" ]]; then
+    echo "add element ip vyos_filter N_blackhole {" >> "$RULESET_FILE"
+    [[ -n "$ip_lines" ]] && echo "$ip_lines" >> "$RULESET_FILE"
+    echo "}" >> "$RULESET_FILE"
+else
+    echo "DEBUG: No IPs extracted, set will be flushed empty" >&2
 fi
-
+#
+# ToDo: add ipv6 support
+#
 if (( ! $DRY_RUN )); then
-  (( $VERBOSE )) && echo "Applying ruleset..."
   $NFT -f "$RULESET_FILE" || { echo >&2 "Failed to apply the ruleset"; exit 1; }
 fi
 
