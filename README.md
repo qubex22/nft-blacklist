@@ -17,11 +17,11 @@ A Bash shell script which uses nftables sets to ban a large number of IP address
 7. Auto-update the blacklist using a task
 8. Use the new network group in the usual vyos firewall config. Example:
    ```
-set firewall ipv4 name WAN_IN rule 1 action 'drop'
-set firewall ipv4 name WAN_IN rule 1 description 'blacklist'
-set firewall ipv4 name WAN_IN rule 1 log
-set firewall ipv4 name WAN_IN rule 1 protocol 'all'
-set firewall ipv4 name WAN_IN rule 1 source group network-group 'blackhole'
+   set firewall ipv4 name WAN_IN rule 1 action 'drop'
+   set firewall ipv4 name WAN_IN rule 1 description 'blacklist'
+   set firewall ipv4 name WAN_IN rule 1 log
+   set firewall ipv4 name WAN_IN rule 1 protocol 'all'
+   set firewall ipv4 name WAN_IN rule 1 source group network-group 'blackhole'
    ```
 
 ## First run, create the list
